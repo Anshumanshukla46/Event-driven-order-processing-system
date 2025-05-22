@@ -1,4 +1,4 @@
-### ✅ Run Zookeeper and Kafka via Docker
+![image](https://github.com/user-attachments/assets/eeb531b4-95cc-4f3e-b1ad-5633b3079515)### ✅ Run Zookeeper and Kafka via Docker
 
 Open terminal and run:
 
@@ -145,4 +145,15 @@ Kafka will **automatically retry** your processing when a temporary error (like 
 
 - In DLT topic, you can **analyze**, **reprocess**, or **alert** based on failed messages.
 
----
+-----
+
+## Attaching demo screenshots:
+1. Doing post call:
+![image](https://github.com/user-attachments/assets/44292052-3624-4d9c-81cd-5b7a34d1d2a3)
+
+
+2. Log in consumer:
+![image](https://github.com/user-attachments/assets/535d44ee-1d27-4840-918f-363933aaa38d)
+
+3. Grafana dashboard:
+![image](https://github.com/user-attachments/assets/a99904e6-a4ed-4598-a655-b4b865105abc)
