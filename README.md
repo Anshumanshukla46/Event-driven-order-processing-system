@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/eeb531b4-95cc-4f3e-b1ad-5633b3079515)### ✅ Run Zookeeper and Kafka via Docker
+### ✅ Run Zookeeper and Kafka via Docker
 
 Open terminal and run:
 
