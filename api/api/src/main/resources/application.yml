@@ -1,0 +1,17 @@
+# tomcat port
+server:
+  port: 8081
+
+spring:
+  application:
+    name: api
+  kafka:
+    bootstrap-servers: localhost:9092
+
+# prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+        - prometheus

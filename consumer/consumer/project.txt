@@ -1,0 +1,533 @@
+### ✅ Run Zookeeper and Kafka via Docker
+
+Open terminal and run:
+
+# Zookeeper
+docker run -d --name zookeeper -p 2181:2181 -e ZOOKEEPER_CLIENT_PORT=2181 confluentinc/cp-zookeeper:7.4.1
+
+# Kafka
+docker run -d --name kafka -p 9092:9092 -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 --link zookeeper confluentinc/cp-kafka:7.4.1
+
+
+✅ After a few seconds, Kafka will be running on `localhost:9092`.
+
+---
+
+## 🧱 Step 2: Create Spring Boot REST API Project (order-api)
+---
+
+### 📦 Inside order-api
+
+#### 2.1 Create `Order.java`
+
+```java
+package com.example.orderapi.model;
+
+public class Order {
+    private String id;
+    private String product;
+
+    public Order() {}
+    public Order(String id, String product) {
+        this.id = id;
+        this.product = product;
+    }
+
+    public String getId() { return id; }
+    public String getProduct() { return product; }
+
+    public void setId(String id) { this.id = id; }
+    public void setProduct(String product) { this.product = product; }
+}
+```
+
+---
+
+#### 2.2 Create `OrderController.java`
+
+```java
+package com.example.orderapi.controller;
+
+import com.example.orderapi.model.Order;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    @Autowired
+    private KafkaTemplate<String, Order> kafkaTemplate;
+
+    private final String TOPIC = "orders-topic";
+
+    @PostMapping
+    public String placeOrder(@RequestBody Order order) {
+        kafkaTemplate.send(TOPIC, order);
+        return "Order sent to Kafka";
+    }
+}
+```
+
+---
+
+#### 2.3 Create Kafka Config
+
+```java
+package com.example.orderapi.config;
+
+import com.example.orderapi.model.Order;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.context.annotation.*;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.support.serializer.JsonSerializer;
+
+import java.util.*;
+
+@Configuration
+public class KafkaProducerConfig {
+
+    @Bean
+    public ProducerFactory<String, Order> producerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+
+    @Bean
+    public KafkaTemplate<String, Order> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
+    }
+}
+```
+
+---
+
+#### 2.4 Edit `application.yml`
+
+Create this file in `src/main/resources`:
+
+```yaml
+server:
+  port: 8080
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+```
+
+---
+
+### 🏁 Run the Project
+
+1. Make sure Kafka is running (check Docker containers).
+2. Start the Spring Boot app (`order-api`).
+3. Test with Postman / curl:
+
+```http
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "id": "123",
+  "product": "Laptop"
+}
+```
+
+✅ Order will be sent to Kafka.
+
+---
+
+Next Step: **Create the Consumer App (`order-consumer`)**
+
+Ready to continue?
+
+
+
+
+Awesome — now that your **producer app** is ready, let’s talk about what happens after a **system restart** and how to **bring everything back up** smoothly.
+
+---
+
+## 🔁 After Reboot: Restarting Your Kafka System
+
+When you shut down your computer, all Docker containers and your Spring Boot app stop running. So next time, here’s **exactly what to do**:
+
+---
+
+### ✅ Step 1: Start Docker (Desktop)
+
+Open **Docker Desktop** (if it doesn't auto-start). Wait until it’s running.
+
+---
+
+### ✅ Step 2: Start Zookeeper and Kafka Containers
+
+You don’t need to run the full `docker run` commands again because the containers already exist.
+
+Instead, just start the stopped containers:
+
+```bash
+docker start zookeeper
+docker start kafka
+```
+
+To verify they’re running:
+
+```bash
+docker ps
+```
+
+You should see both containers up:
+- Zookeeper → `localhost:2181`
+- Kafka → `localhost:9092`
+
+---
+
+### ✅ Step 3: Start Your Spring Boot Producer App
+
+Just run your app from your IDE or using the command:
+
+```bash
+./mvnw spring-boot:run
+# OR if using Gradle
+./gradlew bootRun
+```
+
+Once it’s running, test with:
+
+```http
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "id": "1",
+  "product": "iPhone"
+}
+```
+
+---
+
+### 🔎 Troubleshooting Tips
+
+- If you get a `Connection Refused` error on Kafka, check:
+  - Is Docker running?
+  - Are both containers (`zookeeper`, `kafka`) **started**, not exited?
+  - Try `docker logs kafka` to see logs.
+
+---
+
+### 🧹 Bonus (If You Ever Want to Clean Up)
+
+To remove containers if needed:
+
+```bash
+docker stop kafka zookeeper
+docker rm kafka zookeeper
+```
+
+Then you can re-run the `docker run` commands if you ever want a fresh setup.
+
+---
+
+Let me know when you're ready to set up the **Consumer App** (to actually read the orders you publish)!
+
+Awesome! You're on a solid track. Let's build the **Kafka Consumer (`order-consumer`)** for your event-driven order processing system. Here's what we’ll do step by step:
+
+---
+
+## ✅ Step 1: Create a Spring Boot Kafka Consumer Project
+
+If you're using Maven:
+
+```bash
+spring init --dependencies=web,kafka --name=order-consumer order-consumer
+```
+
+Or if you're doing this manually, add the following to `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>org.springframework.kafka</groupId>
+    <artifactId>spring-kafka</artifactId>
+</dependency>
+```
+
+---
+
+## 🏗 Step 2: Kafka Consumer Configuration
+
+```java
+@Configuration
+public class KafkaConsumerConfig {
+
+    @Bean
+    public ConsumerFactory<String, String> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, "order-consumer-group");
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
+    }
+}
+```
+
+---
+
+## 📥 Step 3: Create the Kafka Listener
+
+```java
+@Service
+public class OrderConsumer {
+
+    private static final Logger logger = LoggerFactory.getLogger(OrderConsumer.class);
+
+    @KafkaListener(topics = "order-topic", groupId = "order-consumer-group")
+    public void consume(String message) {
+        logger.info("🟢 Received Order: {}", message);
+        // You can parse JSON and store or process here
+    }
+}
+```
+
+---
+
+## ✅ Step 4: application.yml
+
+```yaml
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: order-consumer-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+```
+
+---
+
+## ✅ Step 5: Run Everything
+
+- Start Zookeeper & Kafka (make sure the Kafka error is resolved now)
+- Run your **Producer** (order-API service)
+- Then run this **Consumer**
+
+You should see logs like:
+
+```
+🟢 Received Order: {"orderId": 123, "item": "iPhone", "qty": 1}
+```
+
+---
+
+## 🔜 What’s Next?
+
+Once this is working smoothly, we can add:
+
+1. **Retry Mechanism** (in case of temporary failure)
+5. **Prometheus/Grafana + Micrometer for monitoring**
+
+---
+
+Let’s break it down very clearly for you —
+**What exactly is happening here:**
+
+---
+
+### 🧠 1. Problem you faced
+When you tried to set retry mechanism in your Kafka consumer,
+you copied older Spring Kafka 2.x code:
+```java
+factory.setErrorHandler(new SeekToCurrentErrorHandler(new FixedBackOff(5000L, 3)));
+```
+but **Spring Kafka 3.x** (which you're using) **has removed this style**.
+
+That’s why you got these two errors:
+- `setErrorHandler()` → method **no longer exists** ❌
+- `SeekToCurrentErrorHandler` → class **no longer exists** ❌
+
+---
+
+### 🛠 2. Why it broke
+Because **Spring Kafka team changed the retry error handling system** in version **3.0**.
+They introduced a **new way**:
+- **ErrorHandler** → **CommonErrorHandler**
+- **SeekToCurrentErrorHandler** → **DefaultErrorHandler**
+
+⚡ Basically:
+> *Old error handling classes and methods were deleted and replaced with new ones.*
+
+---
+
+### 🏗 3. What the fix does
+Now instead of using old stuff,
+✅ you create a `DefaultErrorHandler` bean that tells Kafka:
+- "If an error happens, **retry this message** 3 times with **5 seconds gap**."
+
+✅ Then you set this error handler inside your Kafka container factory using:
+```java
+factory.setCommonErrorHandler(errorHandler());
+```
+✅ And that’s it!
+Kafka will **automatically retry** your processing when a temporary error (like DB down) happens.
+
+---
+
+### 📜 4. In simple words
+- Your **consumer will now retry** the message **3 times** before finally giving up.
+- Each retry will **wait 5 seconds**.
+- No manual retry logic needed inside your `@KafkaListener`.
+- Smooth recovery from temporary failures.
+
+---
+
+### 🏆 What changed from old to new?
+
+| Old Kafka 2.x | New Kafka 3.x |
+|:---|:---|
+| `setErrorHandler` | `setCommonErrorHandler` |
+| `SeekToCurrentErrorHandler` | `DefaultErrorHandler` |
+| `FixedBackOff` | `ExponentialBackOffWithMaxRetries` |
+
+---
+
+# 💬 Simple summary:
+You are updating your Kafka consumer **to match Spring Kafka 3 standards**,
+so it can **retry automatically** when some temporary issue happens ✅.
+
+---
+
+Would you like me to show even **more shortcut (only 4 lines setup)** way? 🚀
+*(You can make it even smaller and cleaner if you want!)*
+Tell me — want to see? 🔥
+
+
+RETRY+DLT:
+
+Got it!
+You want **your code** rewritten fully in **my clean deep-simple style**, **including DLT** support too (because you said ✅ include Move to Dead Letter Topic ✅). 🚀
+
+Here’s your updated, **perfected** version for **Spring Kafka 3.3.x**:
+
+---
+
+# 🎯 Final Full Updated `KafkaConsumerConfig.java`
+
+```java
+package com.order.consumer;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.CommonErrorHandler;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class KafkaConsumerConfig {
+
+    @Bean
+    public ConsumerFactory<String, String> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, "order-consumer-group");
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
+            KafkaTemplate<Object, Object> kafkaTemplate) {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+
+        // ✅ Set retry + DLT logic
+        factory.setCommonErrorHandler(errorHandler(kafkaTemplate));
+
+        return factory;
+    }
+
+    @Bean
+    public CommonErrorHandler errorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
+        // ✅ Configure retry backoff: retry 3 times with 5 sec gap
+        ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(3);
+        backOff.setInitialInterval(5000L); // 5 sec first retry
+        backOff.setMultiplier(1);          // keep 5 sec gaps
+        backOff.setMaxInterval(5000L);
+
+        // ✅ Configure Dead Letter Topic publishing
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate);
+
+        // ✅ Create DefaultErrorHandler with recoverer and backoff
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
+
+        return errorHandler;
+    }
+}
+```
+
+---
+
+# 🚀 What is Added / Upgraded from Your Version?
+
+| Your Old Code | Updated New Code |
+|:---|:---|
+| Only retry 3 times | Retry 3 times **+** move failed messages to **Dead Letter Topic** |
+| No KafkaTemplate used | Added `KafkaTemplate<Object, Object>` to publish failed records |
+| Only `System.out.println()` on failure | Now failure automatically goes to `.DLT` topic |
+| Private `errorHandler()` without params | Now proper `@Bean errorHandler(KafkaTemplate)` with DLT support |
+
+---
+
+# 📦 Important Points to Remember
+
+- You must have a `KafkaTemplate<Object, Object>` bean already configured (you usually have it if you're using `@KafkaListener` projects).
+- Failed messages after retries will go to a new topic named automatically like:
+  ➔ original-topic-name + `.DLT` suffix
+  (e.g., `order-topic` → `order-topic.DLT`)
+
+- In DLT topic, you can **analyze**, **reprocess**, or **alert** based on failed messages.
+
+---
+
+# 📋 What you can Copy-Paste to Listener side
+
+Example `@KafkaListener` will look normal:
+
+```java
+@KafkaListener(topics = "order-topic", groupId = "order-consumer-group")
+public void consume(String message) {
+    System.out.println("Received: " + message);
+    if (message.contains("fail")) {
+        throw new RuntimeException("Force failure for retry!");
+    }
+}
+```
+
+If exception happens:
+- Retry 3 times
+- If still fails → message moved to `order-topic.DLT`
